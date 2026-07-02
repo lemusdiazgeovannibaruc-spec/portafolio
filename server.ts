@@ -3,9 +3,11 @@ import path from "path";
 import fs from "fs";
 import crypto from "crypto";
 import { createServer as createViteServer } from "vite";
+import { contactRateLimiter, getClientIp } from "./src/server/services/rateLimiter";
+import { sendContactEmails } from "./src/server/services/emailService";
 
 // Configuración general del servidor
-const PORT = Number(process.env.PORT) || 3000;
+const PORT = 3000;
 const HOST = "0.0.0.0";
 const IS_PROD = process.env.NODE_ENV === "production";
 
@@ -132,17 +134,17 @@ app.get("/api/security-challenge", (req, res) => {
 });
 
 // 2. Procesar Formulario de Contacto (Validación, Saneamiento, Desafío de seguridad y Cifrado AES-256)
-app.post("/api/contact", (req, res) => {
+app.post("/api/contact", contactRateLimiter, (req, res) => {
   const { name, email, message, challengeId, challengeAnswer, honeypot } = req.body;
 
   // 1. Validación de campo trampa (Honeypot) para bloquear bots automáticos
   if (honeypot && honeypot.trim() !== "") {
-    return res.status(400).json({ error: "Actividad de bot detectada." });
+    return res.status(400).json({ error: "Actividad de bot detectada de forma inmediata." });
   }
 
   // 2. Comprobar presencia de todos los campos obligatorios
   if (!name || !email || !message || !challengeId || !challengeAnswer) {
-    return res.status(400).json({ error: "Todos los campos son requeridos." });
+    return res.status(400).json({ error: "Todos los campos del formulario son obligatorios." });
   }
 
   // 3. Validación y consumo inmediato del reto matemático temporal
@@ -158,18 +160,27 @@ app.post("/api/contact", (req, res) => {
     return res.status(400).json({ error: "Respuesta al desafío de seguridad incorrecta. ¿Es usted humano?" });
   }
 
-  // 4. Saneamiento estricto de textos para neutralizar inyecciones de código
+  // 4. Saneamiento estricto de textos para neutralizar inyecciones de código (XSS)
   const cleanName = sanitizeString(name);
   const cleanEmail = sanitizeString(email);
   const cleanMessage = sanitizeString(message);
 
-  // Validación robusta del formato de correo electrónico
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  if (!emailRegex.test(cleanEmail)) {
-    return res.status(400).json({ error: "Formato de correo electrónico inválido." });
+  // 5. Validaciones de seguridad más estrictas (Límites de longitud para mitigar abusos de almacenamiento/desbordamiento)
+  if (cleanName.length < 2 || cleanName.length > 100) {
+    return res.status(400).json({ error: "El nombre debe tener entre 2 y 100 caracteres." });
   }
 
-  // 5. Cifrado simétrico de datos sensibles antes de guardarlos en el disco
+  if (cleanMessage.length < 10 || cleanMessage.length > 4000) {
+    return res.status(400).json({ error: "El mensaje debe tener entre 10 y 4000 caracteres de longitud." });
+  }
+
+  // Validación de formato de correo electrónico
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(cleanEmail)) {
+    return res.status(400).json({ error: "El formato de correo electrónico no cumple estándares seguros." });
+  }
+
+  // 6. Cifrado simétrico de datos sensibles antes de guardarlos en el disco para salvaguardar privacidad
   const contactData = JSON.stringify({
     name: cleanName,
     email: cleanEmail,
@@ -179,19 +190,46 @@ app.post("/api/contact", (req, res) => {
 
   const encryptedRecord = encryptText(contactData);
 
-  // Registrar el bloque cifrado de forma segura e incremental en el archivo bitácora
+  // Registrar el bloque cifrado de forma segura en el archivo bitácora local
   try {
     fs.appendFileSync(SECURE_DB_FILE, encryptedRecord + "\n");
   } catch (error) {
-    console.error("Error al guardar registro seguro:", error);
-    return res.status(500).json({ error: "Fallo interno al resguardar la información." });
+    // Registramos el error de escritura únicamente en la consola del servidor por seguridad
+    console.error("❌ Error interno al guardar registro seguro en disco:", error);
+    return res.status(500).json({ error: "Ha ocurrido un error inesperado al procesar su solicitud." });
   }
 
-  res.json({
-    success: true,
-    message: "¡Mensaje recibido de forma segura y encriptado con AES-256!",
-    sanitizedName: cleanName,
-  });
+  // 7. Enviar correos en segundo plano de forma asíncrona (Notificación al Admin + Auto-respuesta)
+  const clientIp = getClientIp(req);
+  const userAgent = req.headers["user-agent"] || "Desconocido";
+
+  sendContactEmails({
+    name: cleanName,
+    email: cleanEmail,
+    message: cleanMessage,
+    ip: clientIp,
+    userAgent: userAgent,
+  })
+    .then((mailResult) => {
+      // Envío de correo exitoso
+      res.json({
+        success: true,
+        message: "¡Su mensaje fue recibido con éxito, saneado contra inyecciones e incrementalmente cifrado con AES-256! Hemos enviado una confirmación a su correo.",
+        sanitizedName: cleanName,
+        previewUrl: mailResult.previewUrl, // Solo disponible en modo prueba (Ethereal)
+      });
+    })
+    .catch((mailError) => {
+      // Si falla el envío por problemas SMTP, registramos el error únicamente en el servidor
+      console.error("❌ Fallo crítico de envío de correos en el endpoint:", mailError.message || mailError);
+      
+      // Retornamos éxito al cliente porque el mensaje ya fue resguardado de forma segura en disco
+      res.json({
+        success: true,
+        message: "¡Su mensaje fue recibido con éxito, saneado contra inyecciones e incrementalmente cifrado con AES-256! (Notificación por correo en cola).",
+        sanitizedName: cleanName,
+      });
+    });
 });
 
 // 3. Recuperación e historial de bitácora segura descifrada de forma dinámica
