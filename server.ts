@@ -5,7 +5,7 @@ import crypto from "crypto";
 import { createServer as createViteServer } from "vite";
 
 // Configuración general del servidor
-const PORT = 3000;
+const PORT = Number(process.env.PORT) || 3000;
 const HOST = "0.0.0.0";
 const IS_PROD = process.env.NODE_ENV === "production";
 
