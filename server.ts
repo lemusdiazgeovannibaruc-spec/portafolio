@@ -1,3 +1,4 @@
+import "dotenv/config";
 import express from "express";
 import path from "path";
 import fs from "fs";
@@ -199,7 +200,7 @@ app.post("/api/contact", contactRateLimiter, (req, res) => {
     return res.status(500).json({ error: "Ha ocurrido un error inesperado al procesar su solicitud." });
   }
 
-  // 7. Enviar correos en segundo plano de forma asíncrona (Notificación al Admin + Auto-respuesta)
+  // 7. Enviar correos de forma asíncrona mediante la API oficial de Resend (Notificación al Admin + Auto-respuesta)
   const clientIp = getClientIp(req);
   const userAgent = req.headers["user-agent"] || "Desconocido";
 
@@ -210,24 +211,20 @@ app.post("/api/contact", contactRateLimiter, (req, res) => {
     ip: clientIp,
     userAgent: userAgent,
   })
-    .then((mailResult) => {
-      // Envío de correo exitoso
+    .then(() => {
+      // Envío de correo exitoso con Resend
       res.json({
         success: true,
         message: "¡Su mensaje fue recibido con éxito, saneado contra inyecciones e incrementalmente cifrado con AES-256! Hemos enviado una confirmación a su correo.",
         sanitizedName: cleanName,
-        previewUrl: mailResult.previewUrl, // Solo disponible en modo prueba (Ethereal)
       });
     })
     .catch((mailError) => {
-      // Si falla el envío por problemas SMTP, registramos el error únicamente en el servidor
-      console.error("❌ Fallo crítico de envío de correos en el endpoint:", mailError.message || mailError);
+      // Registramos el error de Resend únicamente en el servidor por seguridad
+      console.error("❌ Fallo crítico de envío de correos con Resend API:", mailError.message || mailError);
       
-      // Retornamos éxito al cliente porque el mensaje ya fue resguardado de forma segura en disco
-      res.json({
-        success: true,
-        message: "¡Su mensaje fue recibido con éxito, saneado contra inyecciones e incrementalmente cifrado con AES-256! (Notificación por correo en cola).",
-        sanitizedName: cleanName,
+      res.status(500).json({
+        error: "Ocurrió un problema al enviar el mensaje.",
       });
     });
 });
