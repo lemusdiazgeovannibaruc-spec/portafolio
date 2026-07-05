@@ -46,12 +46,14 @@ import {
 import NetworkSimulator from './components/NetworkSimulator';
 import RouteOptimizer from './components/RouteOptimizer';
 import InventorySimulator from './components/InventorySimulator';
+import { CVDownloadModal } from './components/CVDownloadModal';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<'network' | 'routes' | 'inventory'>('network');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [expandedJob, setExpandedJob] = useState<string | null>("exp1");
+  const [showCVModal, setShowCVModal] = useState(false);
   
   // Estado para el formulario de contacto con mitigación de spam
   const [contactName, setContactName] = useState('');
@@ -271,6 +273,13 @@ export default function App() {
               className="px-6 py-3.5 bg-white border border-neutral-200 hover:border-neutral-400 text-[#111111] font-mono uppercase tracking-wider text-xs rounded-lg transition-colors flex items-center justify-center gap-2 cursor-pointer"
             >
               Get in touch
+            </button>
+            <button
+              onClick={() => setShowCVModal(true)}
+              className="px-6 py-3.5 bg-neutral-100 hover:bg-neutral-200 text-[#666666] hover:text-[#111111] font-mono uppercase tracking-wider text-xs rounded-lg transition-all flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <Download className="w-4 h-4 text-[#0F62FE]" />
+              Descargar CV
             </button>
           </div>
 
@@ -936,6 +945,7 @@ export default function App() {
         </div>
       </footer>
 
+      <CVDownloadModal isOpen={showCVModal} onClose={() => setShowCVModal(false)} />
     </div>
   );
 }

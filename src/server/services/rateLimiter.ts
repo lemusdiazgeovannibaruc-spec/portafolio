@@ -64,6 +64,39 @@ export function contactRateLimiter(req: Request, res: Response, next: NextFuncti
   next();
 }
 
+const cvRequestMap = new Map<string, RateLimitInfo>();
+const CV_MAX_REQUESTS = 5; // Límite de 5 descargas por IP cada 15 minutos
+
+/**
+ * Middleware para limitar la generación y descarga de CV en PDF.
+ */
+export function cvRateLimiter(req: Request, res: Response, next: NextFunction) {
+  const ip = getClientIp(req);
+  const now = Date.now();
+
+  let ipInfo = cvRequestMap.get(ip);
+
+  if (!ipInfo || now > ipInfo.resetTime) {
+    ipInfo = {
+      count: 0,
+      resetTime: now + WINDOW_MS,
+    };
+    cvRequestMap.set(ip, ipInfo);
+  }
+
+  if (ipInfo.count >= CV_MAX_REQUESTS) {
+    const remainingTimeMinutes = Math.ceil((ipInfo.resetTime - now) / (60 * 1000));
+    console.warn(`[CV LIMIT EXCEEDED] IP: ${ip} intentando descargar CV en exceso.`);
+    return res.status(429).json({
+      error: `Has superado el límite de descargas de CV temporales. Por favor, espera ${remainingTimeMinutes} minuto(s) para proteger la seguridad de los datos.`,
+    });
+  }
+
+  ipInfo.count += 1;
+  cvRequestMap.set(ip, ipInfo);
+  next();
+}
+
 /**
  * Limpieza automática de la memoria de IPs expiradas para evitar fugas de memoria.
  */
@@ -72,6 +105,11 @@ setInterval(() => {
   for (const [ip, info] of ipRequestMap.entries()) {
     if (now > info.resetTime) {
       ipRequestMap.delete(ip);
+    }
+  }
+  for (const [ip, info] of cvRequestMap.entries()) {
+    if (now > info.resetTime) {
+      cvRequestMap.delete(ip);
     }
   }
 }, 300000); // Se ejecuta cada 5 minutos

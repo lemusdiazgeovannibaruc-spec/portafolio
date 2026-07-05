@@ -4,8 +4,9 @@ import path from "path";
 import fs from "fs";
 import crypto from "crypto";
 import { createServer as createViteServer } from "vite";
-import { contactRateLimiter, getClientIp } from "./src/server/services/rateLimiter";
+import { contactRateLimiter, cvRateLimiter, getClientIp } from "./src/server/services/rateLimiter";
 import { sendContactEmails } from "./src/server/services/emailService";
+import { generateCVPDF } from "./src/server/services/pdfService";
 
 // Configuración general del servidor
 const PORT = 3000;
@@ -15,6 +16,7 @@ const IS_PROD = process.env.NODE_ENV === "production";
 // Directorio para persistencia segura de datos locales cifrados
 const DATA_DIR = path.join(process.cwd(), "data");
 const SECURE_DB_FILE = path.join(DATA_DIR, "messages_encrypted.bin");
+const SECURE_CV_DB_FILE = path.join(DATA_DIR, "cv_requests_encrypted.bin");
 
 // Clave y vector de inicialización (IV) para cifrado simétrico AES-256-CBC
 // Se utiliza un archivo de clave persistente para que las bitácoras sigan siendo descifrables tras reiniciar el servidor
@@ -45,17 +47,23 @@ const app = express();
 app.use(express.json({ limit: "10kb" }));
 app.use(express.urlencoded({ extended: true, limit: "10kb" }));
 
-// 🛡️ Middleware de cabeceras de seguridad personalizadas (Equivalente robusto a Helmet)
+// 🛡️ Middleware de cabeceras de seguridad de grado de producción (Equivalente robusto a Helmet)
 app.use((req, res, next) => {
   // Mitigar ataques de suplantación de tipo MIME (MIME-sniffing)
   res.setHeader("X-Content-Type-Options", "nosniff");
-  // Prevenir que el sitio sea embebido en iframes externos, evitando Clickjacking
+  // Prevenir clickjacking adaptado a entornos seguros y previews en iframe
   res.setHeader("X-Frame-Options", "SAMEORIGIN");
-  // Habilitar el bloqueo de Cross-Site Scripting (XSS) reflejado en el navegador
+  // Habilitar el bloqueo de Cross-Site Scripting (XSS) en navegadores antiguos
   res.setHeader("X-XSS-Protection", "1; mode=block");
   // Ocultar información sensible del origen en el flujo de peticiones externas
   res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
-  // Definir una estricta Política de Seguridad del Contenido (CSP)
+  // Cabecera HSTS para forzar conexiones HTTPS seguras en producción (Render)
+  res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload");
+  // Prevenir prefetch de DNS maliciosos
+  res.setHeader("X-DNS-Prefetch-Control", "on");
+  // Deshabilitar APIs de hardware no utilizadas por privacidad
+  res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=(), interest-cohort=()");
+  // Definir una estricta Política de Seguridad del Contenido (CSP) que soporte fuentes y assets locales
   res.setHeader(
     "Content-Security-Policy",
     "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://fonts.googleapis.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: referrer; connect-src 'self' *"
@@ -229,83 +237,148 @@ app.post("/api/contact", contactRateLimiter, (req, res) => {
     });
 });
 
-// 3. Descarga segura del currículum imprimible en formato plano
-app.get("/api/download-cv", (req, res) => {
-  const cvText = `=============================================================================
-PORTAFOLIO PROFESIONAL Y CURRICULUM VITAE - ING. GEOVANNI BARUC LEMUS DÍAZ
-=============================================================================
+// 3. Registrar descarga de CV y generar Token firmado temporal
+app.post("/api/request-cv", cvRateLimiter, (req, res) => {
+  const { name, company, position, email, reason } = req.body;
 
-DATOS GENERALES
------------------
-Nombre: Geovanni Baruc Lemus Díaz
-Título: Ingeniero en Sistemas Computacionales
-Ubicación: Tulancingo de Bravo, Hidalgo, México
-Cédula Federal: No. 15684082 (Emitido en 2026)
-Contacto: lemusdiazgeovannibaruc@gmail.com
-Teléfono: Disponible bajo solicitud escrita
-Licencia de conducir: Tipo C, B
+  // 1. Validaciones robustas de presencia y tipo
+  if (!name || !company || !position || !email || !reason) {
+    return res.status(400).json({ error: "Todos los campos de la solicitud de descarga son obligatorios." });
+  }
 
-PERFIL PROFESIONAL
------------------
-Ingeniero en Sistemas Computacionales apasionado por crear soluciones útiles que unan
-la tecnología con las necesidades de la vida diaria y el trabajo. Me enfoco principalmente
-en el diseño de redes de comunicación, la mejora de rutas de reparto para entregas rápidas,
-el soporte avanzado de hardware, y el desarrollo de software seguro y modular. Me considero
-una persona práctica, organizada y orientada a dar resultados eficientes.
+  const cleanName = sanitizeString(name);
+  const cleanCompany = sanitizeString(company);
+  const cleanPosition = sanitizeString(position);
+  const cleanEmail = sanitizeString(email);
+  const cleanReason = sanitizeString(reason);
 
-SERVICIOS PROFESIONALES DESTACADOS
-----------------------------------
-1. Mantenimiento Preventivo de Computadoras (limpieza física profunda, pasta térmica).
-2. Mantenimiento Correctivo de Computadoras (diagnóstico de componentes, refacciones).
-3. Diagnóstico de fallas de hardware (memoria RAM, procesador, fuente, almacenamiento).
-4. Reparación de laptops y equipos de escritorio (pantallas, teclados, bisagras).
-5. Optimización y limpieza de sistemas (desinfección de malware, aceleración de Windows/Linux).
-6. Instalación y configuración de Sistemas Operativos (Windows 10/11, distribuciones de Linux).
-7. Instalación de software y utilidades bajo licencia autorizada.
-8. Respaldo y recuperación segura de información de unidades de almacenamiento.
-9. Configuración de redes básicas (cableado estructurado, repetidores Wi-Fi, switches).
-10. Asesoría tecnológica para selección de hardware adecuado al presupuesto.
-11. Desarrollo de software y aplicaciones web empresariales.
+  if (cleanName.length < 2 || cleanName.length > 100) {
+    return res.status(400).json({ error: "El nombre debe tener entre 2 y 100 caracteres." });
+  }
+  if (cleanCompany.length < 2 || cleanCompany.length > 100) {
+    return res.status(400).json({ error: "La empresa debe tener entre 2 y 100 caracteres." });
+  }
+  if (cleanPosition.length < 2 || cleanPosition.length > 100) {
+    return res.status(400).json({ error: "El cargo debe tener entre 2 y 100 caracteres." });
+  }
+  if (cleanReason.length < 5 || cleanReason.length > 1000) {
+    return res.status(400).json({ error: "El motivo de contacto debe tener entre 5 y 1000 caracteres." });
+  }
 
-EXPERIENCIA LABORAL
--------------------
-* Diseñador de Red e Infraestructura | Centro Universitario de Ciencias Ambientales
-  Período: 12/2024 - 05/2025 (Hidalgo, México)
-  - Diseño lógico y físico de la topología de red para el campus.
-  - Instalación y configuración de switches, routers y cableado estructurado.
-  - Implementación de políticas de seguridad en red Cisco.
+  // Validación de correo corporativo / institucional
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(cleanEmail)) {
+    return res.status(400).json({ error: "El formato de correo corporativo es inválido." });
+  }
 
-* Encargado de Logística de Rutas de Reparto | Hamburguesas MASS
-  Período: 2024 - Presente (Tulancingo, Hidalgo)
-  - Planificación óptima de trayectos utilizando grafos y optimización lógica.
-  - Reducción del tiempo de entrega en un 25% y ahorro de combustible.
-  - Evaluación continua del estado vial del municipio para la asignación de rutas.
+  // Comprobar correos genéricos comunes (Gmail, Outlook, Hotmail, Yahoo)
+  const isGeneric = /@(gmail|outlook|hotmail|yahoo|live|icloud|aol)\./i.test(cleanEmail);
+  if (isGeneric) {
+    // Alentamos el uso de correos profesionales, pero permitimos para evitar bloquear usuarios genuinos si lo aclaran
+    // Dejamos la advertencia pero permitimos el registro por usabilidad con bandera informativa
+    console.log(`[CV REQUEST] Remitente usó correo común: ${cleanEmail}`);
+  }
 
-* Trainee de Ventas e Inventarios | Tiendas 3B S.A. de C.V.
-  Período: 01/2022 - 03/2024 (Tulancingo, Hidalgo)
-  - Recepción de almacén y levantamiento de inventarios físicos semanales.
-  - Control de mermas y auditorías de stock de alta velocidad.
+  // 2. Registro cifrado AES-256-CBC en disco para auditoría de seguridad
+  const logData = JSON.stringify({
+    name: cleanName,
+    company: cleanCompany,
+    position: cleanPosition,
+    email: cleanEmail,
+    reason: cleanReason,
+    ip: getClientIp(req),
+    timestamp: new Date().toISOString()
+  });
 
-FORMACIÓN ACADÉMICA
---------------------
-* Licenciatura en Ingeniería en Sistemas Computacionales
-  Universidad Politécnica de Tulancingo (2022 - 2025)
-  Cédula Federal Registrada No. 15684082
+  try {
+    const encryptedRecord = encryptText(logData);
+    fs.appendFileSync(SECURE_CV_DB_FILE, encryptedRecord + "\n");
+  } catch (error) {
+    console.error("❌ Fallo guardando log de CV cifrado:", error);
+  }
 
-CERTIFICACIONES OFICIALES
-------------------------
-1. Cisco CCNA - Introducción a Redes (Expedido: Noviembre 2024)
-2. Programación en Python - Santander Open Academy (Expedido: Agosto 2025)
-3. Curso de Comunicación y Perspectiva - BUAP (Aprovechamiento: 8.5, Agosto 2025)
+  // 3. Generar token temporal firmado (validez: 5 minutos / 300 segundos)
+  const expiresAt = Date.now() + 5 * 60 * 1000;
+  const tokenPayload = {
+    name: cleanName,
+    company: cleanCompany,
+    position: cleanPosition,
+    email: cleanEmail,
+    reason: cleanReason,
+    expiresAt
+  };
 
-=============================================================================
-Documento generado de forma segura y firmado digitalmente por el portafolio en línea.
-Tulancingo, Hidalgo. 2026.
-=============================================================================`;
+  // Convertir a base64url para evitar URL encoding corruptions
+  const serialized = Buffer.from(JSON.stringify(tokenPayload)).toString("base64url");
+  const signature = crypto.createHmac("sha256", ENCRYPTION_KEY).update(serialized).digest("base64url");
+  const downloadToken = `${serialized}.${signature}`;
 
-  res.setHeader("Content-Type", "text/plain; charset=utf-8");
-  res.setHeader("Content-Disposition", "attachment; filename=CV_Geovanni_Lemus_Diaz.txt");
-  res.send(cvText);
+  res.json({
+    success: true,
+    token: downloadToken,
+    message: "Solicitud registrada con éxito. Generando enlace de descarga temporal."
+  });
+});
+
+// 4. Descarga del CV personalizado y con marca de agua dinámica
+app.get("/api/download-cv-pdf", cvRateLimiter, async (req, res) => {
+  const { token } = req.query;
+
+  if (!token || typeof token !== "string") {
+    return res.status(400).send("Enlace de descarga de currículum inválido o ausente.");
+  }
+
+  const parts = token.split(".");
+  if (parts.length !== 2) {
+    return res.status(400).send("Estructura de credencial de descarga corrupta.");
+  }
+
+  const [serialized, signature] = parts;
+  const expectedSignature = crypto.createHmac("sha256", ENCRYPTION_KEY).update(serialized).digest("base64url");
+
+  if (signature !== expectedSignature) {
+    return res.status(403).send("La firma digital de esta credencial de descarga es inválida o fue modificada.");
+  }
+
+  try {
+    const decodedStr = Buffer.from(serialized, "base64url").toString("utf8");
+    const payload = JSON.parse(decodedStr);
+
+    if (!payload.expiresAt || Date.now() > payload.expiresAt) {
+      return res.status(410).send("Este enlace de descarga temporal ha expirado (válido por 5 minutos). Por favor, genera una nueva solicitud.");
+    }
+
+    // Configurar cabeceras HTTP ultra seguras para entrega de binarios y evitar caché antigua
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="CV_Geovanni_Lemus_Diaz.pdf"`);
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("X-Frame-Options", "DENY");
+
+    const dateStr = new Date().toLocaleDateString("es-MX", {
+      timeZone: "America/Mexico_City",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
+
+    // Stream el PDF dinámico con marca de agua personalizada
+    await generateCVPDF(res, {
+      name: payload.name,
+      company: payload.company,
+      position: payload.position,
+      email: payload.email,
+      reason: payload.reason,
+      dateStr
+    });
+  } catch (error) {
+    console.error("❌ Fallo crítico generando o transmitiendo PDF de CV:", error);
+    if (!res.headersSent) {
+      res.status(500).send("Ocurrió un error en el servidor al generar el documento PDF.");
+    }
+  }
 });
 
 // ------------------- ENLACE INTEGRADO DE VITE Y PÁGINA SPA -------------------
@@ -321,8 +394,29 @@ async function startServer() {
   } else {
     // Modo Producción: Sirve los archivos estáticos precompilados de la carpeta /dist
     const distPath = path.join(process.cwd(), "dist");
-    app.use(express.static(distPath));
+    
+    // Servir estáticos con cabeceras estrictas contra caché obsoleta para HTML
+    app.use(express.static(distPath, {
+      maxAge: "1y",
+      etag: true,
+      setHeaders: (res, filePath) => {
+        if (filePath.endsWith(".html")) {
+          // No permitir almacenamiento de index.html para asegurar carga de builds nuevos de forma instantánea
+          res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0");
+          res.setHeader("Pragma", "no-cache");
+          res.setHeader("Expires", "0");
+        } else if (filePath.includes("/assets/") || filePath.endsWith(".js") || filePath.endsWith(".css")) {
+          // Activos inmutables con hashes pueden ser cacheados indefinidamente
+          res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+        }
+      }
+    }));
+
     app.get("*", (req, res) => {
+      // Forzar que el router SPA de index.html tampoco se guarde en caché
+      res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0");
+      res.setHeader("Pragma", "no-cache");
+      res.setHeader("Expires", "0");
       res.sendFile(path.join(distPath, "index.html"));
     });
   }
