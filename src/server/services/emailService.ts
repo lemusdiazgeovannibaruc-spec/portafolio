@@ -46,7 +46,7 @@ export async function sendContactEmails(params: SendEmailParams): Promise<{ succ
   try {
     const resend = getResendClient();
     
-    const fromEmail = cleanEnvValue(process.env.EMAIL_FROM) || "contacto@geovannilemus.dev";
+    const fromEmail = cleanEnvValue(process.env.EMAIL_FROM) || "onboarding@resend.dev";
     const toEmail = cleanEnvValue(process.env.EMAIL_TO) || "lemusdiazgeovannibaruc@gmail.com";
     
     const nowStr = new Date().toLocaleString("es-MX", { timeZone: "America/Mexico_City" }) + " (Hora de México)";

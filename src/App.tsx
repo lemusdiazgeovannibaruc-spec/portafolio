@@ -3,7 +3,6 @@ import {
   Mail, 
   Phone, 
   MapPin, 
-  Calendar, 
   Award, 
   BookOpen, 
   Briefcase, 
@@ -67,22 +66,6 @@ export default function App() {
   // Estado para rastrear el progreso y resultado del envío seguro del formulario
   const [formSubmitted, setFormSubmitted] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const [savedMessages, setSavedMessages] = useState<{name: string, email: string, message: string, timestamp?: string, date?: string}[]>([]);
-
-  // Recupera el historial de mensajes cifrados con AES descifrados en el servidor
-  const fetchAuditMessages = async () => {
-    try {
-      const res = await fetch('/api/audit-messages');
-      if (res.ok) {
-        const data = await res.json();
-        if (data.messages) {
-          setSavedMessages(data.messages);
-        }
-      }
-    } catch (e) {
-      console.error('Error al obtener bitácoras de auditoría:', e);
-    }
-  };
 
   // Solicita un nuevo reto matemático de seguridad al servidor backend
   const fetchChallenge = async () => {
@@ -101,7 +84,6 @@ export default function App() {
 
   useEffect(() => {
     fetchChallenge();
-    fetchAuditMessages();
   }, []);
 
   // Procesa el envío del formulario sanitizándolo y resolviendo el reto en el backend
@@ -145,8 +127,7 @@ export default function App() {
       setContactMessage('');
       setChallengeAnswer('');
       
-      // Recargar bitácora desde servidor y solicitar nuevo reto
-      fetchAuditMessages();
+      // Solicitar nuevo reto matemático tras el envío exitoso
       fetchChallenge();
 
       setTimeout(() => {
@@ -367,13 +348,6 @@ export default function App() {
 
               {/* Personal Quick Info Rows */}
               <div className="w-full space-y-3 text-xs font-mono text-left">
-                <div className="flex items-center gap-2.5 text-slate-400">
-                  <Calendar className="w-4 h-4 text-teal-500 shrink-0" />
-                  <div>
-                    <span className="text-slate-600 block text-[9px] uppercase">Nacimiento</span>
-                    <span className="text-slate-300">{personalInfo.birthDate}</span>
-                  </div>
-                </div>
                 <div className="flex items-center gap-2.5 text-slate-400">
                   <MapPin className="w-4 h-4 text-teal-500 shrink-0" />
                   <div>
@@ -1179,35 +1153,6 @@ export default function App() {
                   )}
                 </button>
               </form>
-
-              {/* Secure Logs Audit Ledger */}
-              {savedMessages.length > 0 && (
-                <div className="mt-6 pt-6 border-t border-slate-850 space-y-3">
-                  <div className="flex justify-between items-center">
-                    <span className="text-[10px] font-mono text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
-                      <ShieldCheck className="w-3.5 h-3.5 text-teal-500" />
-                      Bitácora Descifrada AES-256 ({savedMessages.length})
-                    </span>
-                  </div>
-                  
-                  <div className="max-h-[160px] overflow-y-auto space-y-2 pr-1 scrollbar-thin">
-                    {savedMessages.map((msg, idx) => (
-                      <div key={idx} className="p-2.5 bg-slate-950 border border-slate-850/60 rounded-lg text-xs space-y-1">
-                        <div className="flex justify-between text-[10px] text-slate-400">
-                          <span className="font-semibold text-teal-400 truncate max-w-[150px]">{msg.name}</span>
-                          <span className="font-mono text-[9px] flex items-center gap-1">
-                            <Clock className="w-2.5 h-2.5 text-slate-500" />
-                            {msg.timestamp ? new Date(msg.timestamp).toLocaleString("es-MX", { hour12: false }) : "Reciente"}
-                          </span>
-                        </div>
-                        <p className="text-slate-300 italic font-sans text-[11px] leading-relaxed break-words">
-                          "{msg.message}"
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
             </div>
 
           </div>

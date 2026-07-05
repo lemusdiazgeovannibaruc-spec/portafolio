@@ -43,7 +43,6 @@ export const personalInfo = {
   phone: "Disponible bajo solicitud",
   location: "Tulancingo de Bravo, Hidalgo, México",
   postalCode: "",
-  birthDate: "20 de diciembre de 1996",
   license: "Permiso de conducir C, B",
   languages: [
     { name: "Español", level: "Nativo" },

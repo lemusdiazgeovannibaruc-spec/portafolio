@@ -229,31 +229,7 @@ app.post("/api/contact", contactRateLimiter, (req, res) => {
     });
 });
 
-// 3. Recuperación e historial de bitácora segura descifrada de forma dinámica
-app.get("/api/audit-messages", (req, res) => {
-  if (!fs.existsSync(SECURE_DB_FILE)) {
-    return res.json({ messages: [] });
-  }
-
-  try {
-    const data = fs.readFileSync(SECURE_DB_FILE, "utf8");
-    const lines = data.split("\n").filter((l) => l.trim() !== "");
-    const decryptedList = lines.map((line) => {
-      const decryptedStr = decryptText(line);
-      try {
-        return JSON.parse(decryptedStr);
-      } catch (e) {
-        return { error: "Formato corrupto o clave incorrecta" };
-      }
-    });
-
-    res.json({ messages: decryptedList });
-  } catch (err) {
-    res.status(500).json({ error: "No se pudieron recuperar las bitácoras de auditoría." });
-  }
-});
-
-// 4. Descarga segura del currículum imprimible en formato plano
+// 3. Descarga segura del currículum imprimible en formato plano
 app.get("/api/download-cv", (req, res) => {
   const cvText = `=============================================================================
 PORTAFOLIO PROFESIONAL Y CURRICULUM VITAE - ING. GEOVANNI BARUC LEMUS DÍAZ
