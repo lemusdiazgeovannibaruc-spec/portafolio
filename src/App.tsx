@@ -246,7 +246,7 @@ export default function App() {
           {/* Subtle ISC Credential Tag */}
           <span className="inline-flex items-center gap-2 text-[10px] font-mono tracking-widest text-[#666666] uppercase bg-white border border-neutral-200/60 px-3 py-1 rounded-full shadow-[0_2px_8px_rgba(0,0,0,0.01)]">
             <ShieldCheck className="w-3.5 h-3.5 text-[#0F62FE]" />
-            Cédula Federal ISC No. 15684082
+            Cédula Federal ISC No. 1568••••
           </span>
 
           <h1 className="font-display text-5xl sm:text-7xl lg:text-8xl font-bold tracking-tighter text-[#111111] leading-[0.95]">
@@ -272,14 +272,6 @@ export default function App() {
             >
               Get in touch
             </button>
-            <a
-              href="/api/download-cv"
-              download="CV_Geovanni_Lemus_Diaz.txt"
-              className="px-6 py-3.5 bg-neutral-100 hover:bg-neutral-200 text-[#666666] hover:text-[#111111] font-mono uppercase tracking-wider text-xs rounded-lg transition-all flex items-center justify-center gap-2 cursor-pointer"
-            >
-              <Download className="w-4 h-4" />
-              CV.txt
-            </a>
           </div>
 
           {/* Minimal Quick Meta Labels */}
@@ -616,11 +608,11 @@ export default function App() {
                     <div className="mt-4 p-3 rounded-lg bg-white border border-neutral-200/60 text-[10px] font-mono text-[#666666] space-y-1.5 shadow-[0_2px_8px_rgba(0,0,0,0.01)]">
                       <div className="flex justify-between">
                         <span>Cédula Profesional No:</span>
-                        <span className="text-[#111111] font-semibold">15684082</span>
+                        <span className="text-[#111111] font-semibold">1568••••</span>
                       </div>
                       <div className="flex justify-between">
                         <span>Folio de Título:</span>
-                        <span className="text-[#111111]">1315052026465889</span>
+                        <span className="text-[#111111]">1315••••••••5889</span>
                       </div>
                       <div className="flex justify-between">
                         <span>Emisión Federal:</span>
@@ -795,7 +787,7 @@ export default function App() {
                   Contacto directo seguro y confidencial
                 </p>
                 <p className="text-[#666666] text-sm leading-relaxed font-sans mt-4">
-                  ¿Quieres hablar sobre el diseño de una topología de red, optimizar un flujo logístico, realizar un mantenimiento integral de sistemas o proponer una colaboración laboral? Escríbeme directamente.
+                  ¿Quieres hablar sobre desarrollo de software, optimizar la infraestructura de red, realizar mantenimiento de sistemas o proponer una colaboración laboral? Escríbeme directamente. Mi enfoque principal es el desarrollo y mantenimiento especializado de soluciones digitales robustas.
                 </p>
               </div>
 
@@ -803,6 +795,8 @@ export default function App() {
               <div className="space-y-4 text-xs font-mono">
                 <a 
                   href={`mailto:${personalInfo.email}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
                   className="flex items-center gap-3 p-3.5 rounded-xl bg-white border border-neutral-200/60 hover:border-neutral-400 hover:text-[#0F62FE] transition-all group shadow-[0_2px_8px_rgba(0,0,0,0.01)]"
                 >
                   <Mail className="w-4 h-4 text-[#0F62FE] shrink-0" />
@@ -937,7 +931,7 @@ export default function App() {
             <span>Geovanni Lemus © 2026</span>
           </div>
           <div className="text-neutral-400 text-center md:text-right text-[10px]">
-            Ingeniero en Sistemas Computacionales • Diseñado bajo Estándares Premium de UI/UX
+            Ingeniero en Sistemas Computacionales
           </div>
         </div>
       </footer>
