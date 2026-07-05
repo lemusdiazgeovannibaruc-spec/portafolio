@@ -6,3 +6,39 @@
   --font-display: "Space Grotesk", sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
 }
+
+html {
+  scroll-behavior: smooth;
+  background-color: #FAFAFA;
+  color: #111111;
+}
+
+body {
+  background-color: #FAFAFA;
+  color: #111111;
+  font-family: var(--font-sans);
+}
+
+::selection {
+  background-color: #0F62FE;
+  color: #FFFFFF;
+}
+
+/* Custom minimal scrollbar to match high-end UI */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #FAFAFA;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #E5E5E5;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #CCCCCC;
+}
